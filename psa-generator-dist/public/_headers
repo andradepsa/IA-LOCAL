@@ -1,0 +1,6 @@
+/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+  Access-Control-Allow-Headers: *
+  Access-Control-Expose-Headers: *
+  Content-Security-Policy: default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http:; connect-src 'self' blob: data: https://huggingface.co https://*.huggingface.co https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.huggingface.co https://raw.githubusercontent.com https://*.workers.dev https://ia-local.andradepsa-633.workers.dev https://zenodo.org https://sandbox.zenodo.org https://latexonline.cc https://texlive.net https://api.groq.com https://openrouter.ai https://generativelanguage.googleapis.com https:; worker-src 'self' blob: data:; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:;

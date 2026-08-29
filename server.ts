@@ -10,6 +10,18 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.raw({ type: 'application/octet-stream', limit: '50mb' }));
 
+  // Global CORS and security headers for API and WebLLM connections
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Headers', '*');
+    res.header('Access-Control-Expose-Headers', '*');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   // Initialize Gemini if key available
   let genAI: GoogleGenAI | null = null;
   function getGeminiClient(): GoogleGenAI | null {
