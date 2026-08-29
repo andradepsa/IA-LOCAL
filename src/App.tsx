@@ -4,7 +4,7 @@ import { getBrainStats as getFlyBrainStats } from './services/flyBrain';
 import { loadModel as loadLocalAI, getLocalAIStatus, isWebLLMAvailable } from './services/webLLMService';
 import type { Language, IterationAnalysis, PaperSource, StyleGuide, ArticleEntry, PersonalData } from './types';
 import { LANGUAGES, AVAILABLE_MODELS, ANALYSIS_TOPICS, ALL_TOPICS_BY_DISCIPLINE, getAllDisciplines, getRandomTopic, STYLE_GUIDES, TOTAL_ITERATIONS, DISCIPLINE_AUTHORS_FULL, FIXED_AUTHOR_1 } from './constants';
-import ApiKeyModal from './components/ApiKeyModal';
+import ApiKeyModal, { type ApiKeys } from './components/ApiKeyModal';
 import PersonalDataModal from './components/PersonalDataModal';
 import ResultsDisplay from './components/ResultsDisplay';
 import SourceDisplay from './components/SourceDisplay';
@@ -40,7 +40,7 @@ const App: React.FC = () => {
     const [selectedStyle, setSelectedStyle] = useState<StyleGuide>('abnt');
 
     // Estado de upload
-    const [useSandbox, setUseSandbox] = useState(false);
+    const [useSandbox, setUseSandbox] = useState(() => localStorage.getItem('use_zenodo_sandbox') === 'true');
     const [zenodoToken, setZenodoToken] = useState(() => localStorage.getItem('zenodo_api_key') || '');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<React.ReactNode>(null);
@@ -106,9 +106,14 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (zenodoToken) localStorage.setItem('zenodo_api_key', zenodoToken);
-        else localStorage.removeItem('zenodo_api_key');
+        if (zenodoToken) {
+            localStorage.setItem('zenodo_api_key', zenodoToken);
+        }
     }, [zenodoToken]);
+
+    useEffect(() => {
+        localStorage.setItem('use_zenodo_sandbox', useSandbox ? 'true' : 'false');
+    }, [useSandbox]);
 
     useEffect(() => {
         localStorage.setItem('isContinuousMode', isContinuousMode ? 'true' : 'false');
@@ -315,9 +320,10 @@ const App: React.FC = () => {
     const handleFullAutomation = async (batchSizeOverride?: number) => {
         const articlesToProcess = batchSizeOverride ?? (isContinuousMode ? 1 : numberOfArticles);
 
-        const storedToken = localStorage.getItem('zenodo_api_key');
+        const storedToken = zenodoToken || localStorage.getItem('zenodo_api_key') || '';
         if (!storedToken) {
-            alert('Token Zenodo não configurado! Clique no ⚙️.');
+            setIsApiModalOpen(true);
+            setGenerationStatus('⚠️ Token do Zenodo não configurado! Insira e salve seu token na janela de configurações que foi aberta.');
             return;
         }
         setZenodoToken(storedToken);
@@ -489,17 +495,19 @@ const App: React.FC = () => {
             setUploadStatus(<div className="status-error">❌ Compile o PDF primeiro.</div>);
             return;
         }
-        if (!zenodoToken) {
-            setUploadStatus(<div className="status-error">❌ Configure o token Zenodo no ⚙️.</div>);
+        const activeToken = zenodoToken || localStorage.getItem('zenodo_api_key') || '';
+        if (!activeToken) {
+            setIsApiModalOpen(true);
+            setUploadStatus(<div className="status-error">❌ Configure o token Zenodo na janela de configurações aberta.</div>);
             return;
         }
         setIsUploading(true);
-        setUploadStatus(<div className="status-info">🚀 Publicando...</div>);
+        setUploadStatus(<div className="status-info">🚀 Publicando no Zenodo ({useSandbox ? 'Sandbox/Teste' : 'Produção Oficial'})...</div>);
         try {
             const metadata = extractMetadata(latexCode, true);
             const keywords = latexCode.match(/\\textbf\{Keywords:\}\s*([^\\]+)/)?.[1] || '';
-            const result = await uploadToZenodo(compiledPdfFile, { ...metadata, keywords }, zenodoToken);
-            setUploadStatus(<div className="status-success">✅ Publicado! DOI: <a href={result.link} target="_blank" rel="noopener noreferrer">{result.doi}</a></div>);
+            const result = await uploadToZenodo(compiledPdfFile, { ...metadata, keywords }, activeToken);
+            setUploadStatus(<div className="status-success">✅ Publicado com sucesso! DOI: <a href={result.link} target="_blank" rel="noopener noreferrer">{result.doi}</a></div>);
         } catch (error: any) {
             setUploadStatus(<div className="status-error">❌ {error.message}</div>);
         } finally {
@@ -507,8 +515,29 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSaveApiKeys = (keys: { zai: string }) => {
+    const handleSaveApiKeys = (keys: ApiKeys) => {
         if (keys.zai) localStorage.setItem('zai_api_key', keys.zai);
+        else localStorage.removeItem('zai_api_key');
+
+        if (keys.gemini) localStorage.setItem('gemini_api_key', keys.gemini);
+        else localStorage.removeItem('gemini_api_key');
+
+        if (keys.groq) localStorage.setItem('groq_api_key', keys.groq);
+        else localStorage.removeItem('groq_api_key');
+
+        if (keys.zenodo) {
+            localStorage.setItem('zenodo_api_key', keys.zenodo);
+            setZenodoToken(keys.zenodo);
+        } else {
+            localStorage.removeItem('zenodo_api_key');
+            setZenodoToken('');
+        }
+
+        if (typeof keys.useSandbox === 'boolean') {
+            localStorage.setItem('use_zenodo_sandbox', keys.useSandbox ? 'true' : 'false');
+            setUseSandbox(keys.useSandbox);
+        }
+
         setIsApiModalOpen(false);
     };
 
@@ -536,9 +565,23 @@ const App: React.FC = () => {
                         <h1>🎓 Gerador de Artigos Científicos</h1>
                         <p>IA → LaTeX → PDF → Zenodo (24/7)</p>
                     </div>
-                    <div className="header-buttons">
-                        <button onClick={() => setIsPersonalDataModalOpen(true)} title="Dados Pessoais" className="icon-btn">👤</button>
-                        <button onClick={() => setIsApiModalOpen(true)} title="Configurações API" className="icon-btn">⚙️</button>
+                    <div className="header-buttons" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <button 
+                            onClick={() => setIsApiModalOpen(true)} 
+                            className="btn btn-secondary" 
+                            style={{ 
+                                padding: '6px 14px', 
+                                fontSize: '13px',
+                                background: zenodoToken ? '#f0fdf4' : '#fff7ed',
+                                border: `1px solid ${zenodoToken ? '#86efac' : '#fdba74'}`,
+                                color: zenodoToken ? '#166534' : '#c2410c'
+                            }}
+                            title="Gerenciar Tokens e Zenodo"
+                        >
+                            {zenodoToken ? `☁️ Zenodo: Conectado (${useSandbox ? 'Sandbox' : 'Produção'})` : '⚠️ Zenodo: Inserir Token'}
+                        </button>
+                        <button onClick={() => setIsPersonalDataModalOpen(true)} title="Dados dos Autores" className="icon-btn">👤</button>
+                        <button onClick={() => setIsApiModalOpen(true)} title="Configurações de API & Chaves" className="icon-btn">⚙️</button>
                     </div>
                 </div>
                 <div className={`health-banner ${proxyHealth}`}>

@@ -22,10 +22,20 @@ const ZenodoUploader = forwardRef<ZenodoUploaderRef, ZenodoUploaderProps>(({
     title, abstractText, keywords, authors, compiledPdfFile, onFileSelect, onPublishStart, onPublishSuccess, onPublishError,
     extractedMetadata
 }, ref) => {
-    const [useSandbox, setUseSandbox] = useState(true);
-    const [zenodoToken, setZenodoToken] = useState(''); 
+    const [useSandbox, setUseSandbox] = useState(() => localStorage.getItem('use_zenodo_sandbox') === 'true');
+    const [zenodoToken, setZenodoToken] = useState(() => localStorage.getItem('zenodo_api_key') || ''); 
     const [publicationLog, setPublicationLog] = useState<string[]>([]);
     const logContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (zenodoToken) {
+            localStorage.setItem('zenodo_api_key', zenodoToken);
+        }
+    }, [zenodoToken]);
+
+    useEffect(() => {
+        localStorage.setItem('use_zenodo_sandbox', useSandbox ? 'true' : 'false');
+    }, [useSandbox]);
 
     useEffect(() => {
         if (logContainerRef.current) {
