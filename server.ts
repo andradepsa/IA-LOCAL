@@ -24,6 +24,52 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: Date.now() });
   });
 
+  // HuggingFace proxy for WebLLM model weight downloads (bypasses browser CORS restrictions)
+  app.all(['/hf-proxy', '/hf-proxy/*'], async (req, res) => {
+    try {
+      const fullPath = (req.params as any)[0] || req.url.replace(/^\/hf-proxy\/?/, '');
+      if (!fullPath) {
+        return res.status(400).json({ error: 'Missing HuggingFace path' });
+      }
+
+      const hfUrl = `https://huggingface.co/${fullPath}`;
+      const headers: Record<string, string> = {
+        'User-Agent': 'WebLLM-Proxy/1.0',
+        'Accept': '*/*'
+      };
+      if (req.headers.range) {
+        headers['Range'] = req.headers.range as string;
+      }
+
+      const hfRes = await fetch(hfUrl, {
+        method: req.method,
+        headers,
+        redirect: 'follow'
+      });
+
+      res.status(hfRes.status);
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      res.set('Access-Control-Allow-Headers', '*');
+      res.set('Access-Control-Expose-Headers', '*');
+
+      const contentType = hfRes.headers.get('content-type');
+      if (contentType) res.set('Content-Type', contentType);
+      const contentLength = hfRes.headers.get('content-length');
+      if (contentLength) res.set('Content-Length', contentLength);
+      const contentRange = hfRes.headers.get('content-range');
+      if (contentRange) res.set('Content-Range', contentRange);
+      const acceptRanges = hfRes.headers.get('accept-ranges');
+      if (acceptRanges) res.set('Accept-Ranges', acceptRanges);
+
+      const arrayBuffer = await hfRes.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.error('Error in /hf-proxy:', err);
+      res.status(502).json({ error: `Hugging Face Proxy error: ${err?.message || String(err)}` });
+    }
+  });
+
   // LLM Proxy: Handles Gemini, Z.ai, and Groq calls
   app.post('/llm-proxy', async (req, res) => {
     try {

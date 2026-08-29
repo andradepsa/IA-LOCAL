@@ -1,0 +1,18 @@
+# Cloudflare Pages Configuration
+# Este arquivo ajuda no deploy para Cloudflare Pages.
+
+name = "scientific-paper-generator"
+compatibility_date = "2024-09-01"
+pages_build_output_dir = "dist"
+
+# Variáveis de ambiente (configure no dashboard do Cloudflare Pages):
+# Settings → Environment variables:
+# - ZAI_API_KEY: sua API key da Z.ai (gratuita em https://z.ai/manage/apikey)
+# - ZAI_BASE_URL: opcional, padrão é https://api.z.ai/api/paas/v4
+
+# Notas:
+# 1. As Cloudflare Pages Functions em /functions/ são automaticamente detectadas.
+# 2. /functions/llm-proxy.js usa env.ZAI_API_KEY se configurada, senão usa o header X-ZAI-API-Key.
+# 3. /functions/compile-latex.js compila LaTeX via TeXLive.net.
+# 4. /functions/zenodo-proxy.js faz bypass de CORS para a API do Zenodo.
+# 5. /functions/semantic-proxy.js faz bypass de CORS para Semantic Scholar API.

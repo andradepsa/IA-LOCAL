@@ -62,8 +62,10 @@ export async function loadModel(modelId: string = DEFAULT_MODEL): Promise<boolea
             throw new Error('WebGPU não disponível neste navegador');
         }
 
-        // Usa proxy HF para evitar erros de CORS em navegadores
-        const useProxy = true;
+        // Detecta se está rodando no Cloudflare Pages (precisa de proxy HF)
+        const isCloudflare = window.location.hostname.includes('workers.dev') ||
+                            window.location.hostname.includes('pages.dev');
+        const useProxy = isCloudflare;
 
         // Configura o modelo com URL customizada se precisar de proxy
         const modelConfig: any = {

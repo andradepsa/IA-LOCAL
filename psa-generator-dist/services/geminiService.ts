@@ -8,7 +8,7 @@ import { getEnrichedPrompt, registerPaper } from './learningBrain';
 import { think as flyThink, learnWithReward as flyLearnWithReward, suggestHighImpactTopic, getBrainStats } from './flyBrain';
 import type { Language, PaperSource, PersonalData, StyleGuide, TopicScore, GeneratePaperResult } from '../types';
 
-export interface ChatMessage {
+interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
 }
@@ -17,7 +17,7 @@ export interface ChatMessage {
 // CHAMADA LLM via /llm-proxy (Vite plugin com z-ai-web-dev-sdk embutido)
 // ============================================================================
 
-export async function callLLM(
+async function callLLM(
     model: string,
     messages: ChatMessage[],
     options: { temperature?: number; maxTokens?: number; responseFormat?: 'text' | 'json' } = {}
