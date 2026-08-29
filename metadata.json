@@ -1,6 +1,6 @@
 {
-  "name": "IA Local",
-  "description": "Interface e testador de conexão para o serviço IA Local e Cloudflare Worker",
+  "name": "Gerador de Artigos Científicos",
+  "description": "Gerador avançado de artigos científicos com IA, formatação LaTeX, compilação de PDF e publicação Zenodo",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
