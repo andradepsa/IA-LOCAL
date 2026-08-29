@@ -40,7 +40,7 @@ const App: React.FC = () => {
     const [selectedStyle, setSelectedStyle] = useState<StyleGuide>('abnt');
 
     // Estado de upload
-    const [useSandbox, setUseSandbox] = useState(false);
+    const [useSandbox, setUseSandbox] = useState(() => localStorage.getItem('zenodo_use_sandbox') === 'true');
     const [zenodoToken, setZenodoToken] = useState(() => localStorage.getItem('zenodo_api_key') || '');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<React.ReactNode>(null);
@@ -315,9 +315,10 @@ const App: React.FC = () => {
     const handleFullAutomation = async (batchSizeOverride?: number) => {
         const articlesToProcess = batchSizeOverride ?? (isContinuousMode ? 1 : numberOfArticles);
 
-        const storedToken = localStorage.getItem('zenodo_api_key');
+        const storedToken = localStorage.getItem('zenodo_api_key') || zenodoToken;
         if (!storedToken) {
-            alert('Token Zenodo não configurado! Clique no ⚙️.');
+            setIsApiModalOpen(true);
+            alert('Token Zenodo não configurado! Por favor, informe o seu token no modal de configurações.');
             return;
         }
         setZenodoToken(storedToken);
@@ -507,8 +508,29 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSaveApiKeys = (keys: { zai: string }) => {
+    const handleSaveApiKeys = (keys: { zai: string; gemini: string; groq: string; zenodo: string; useSandbox?: boolean }) => {
         if (keys.zai) localStorage.setItem('zai_api_key', keys.zai);
+        else localStorage.removeItem('zai_api_key');
+
+        if (keys.gemini) localStorage.setItem('gemini_api_key', keys.gemini);
+        else localStorage.removeItem('gemini_api_key');
+
+        if (keys.groq) localStorage.setItem('groq_api_key', keys.groq);
+        else localStorage.removeItem('groq_api_key');
+
+        if (keys.zenodo) {
+            localStorage.setItem('zenodo_api_key', keys.zenodo);
+            setZenodoToken(keys.zenodo);
+        } else {
+            localStorage.removeItem('zenodo_api_key');
+            setZenodoToken('');
+        }
+
+        if (keys.useSandbox !== undefined) {
+            setUseSandbox(keys.useSandbox);
+            localStorage.setItem('zenodo_use_sandbox', keys.useSandbox ? 'true' : 'false');
+        }
+
         setIsApiModalOpen(false);
     };
 
@@ -521,7 +543,12 @@ const App: React.FC = () => {
 
     return (
         <div className="container">
-            <ApiKeyModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} onSave={handleSaveApiKeys} />
+            <ApiKeyModal
+                isOpen={isApiModalOpen}
+                onClose={() => setIsApiModalOpen(false)}
+                onSave={handleSaveApiKeys}
+                useSandbox={useSandbox}
+            />
             <PersonalDataModal
                 isOpen={isPersonalDataModalOpen}
                 onClose={() => setIsPersonalDataModalOpen(false)}
