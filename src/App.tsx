@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateCompletePaper, analyzePaper, improvePaper, fixLatexPaper, checkLlmProxyHealth } from './services/geminiService';
-import { getBrainStats as getFlyBrainStats } from './services/flyBrain';
+import { generateCompletePaper, analyzePaper, fixLatexPaper, checkLlmProxyHealth } from './services/geminiService';
+import { getBrainStats as getFlyBrainStats, learnWithScore } from './services/flyBrain';
 import { loadModel as loadLocalAI, getLocalAIStatus, isWebLLMAvailable } from './services/webLLMService';
+import { evaluatePaper, improvePaper, type EvaluationResult } from './services/qualityEvaluator';
 import type { Language, IterationAnalysis, PaperSource, StyleGuide, ArticleEntry, PersonalData } from './types';
 import { LANGUAGES, AVAILABLE_MODELS, ANALYSIS_TOPICS, ALL_TOPICS_BY_DISCIPLINE, getAllDisciplines, getRandomTopic, STYLE_GUIDES, TOTAL_ITERATIONS, DISCIPLINE_AUTHORS_FULL, FIXED_AUTHOR_1 } from './constants';
 import ApiKeyModal, { type ApiKeys } from './components/ApiKeyModal';
 import PersonalDataModal from './components/PersonalDataModal';
 import ResultsDisplay from './components/ResultsDisplay';
 import SourceDisplay from './components/SourceDisplay';
+import QualityPanel, { type QualityStatus, type QualityHistoryItem } from './components/QualityPanel';
 
 const App: React.FC = () => {
     // Estado de configurações
@@ -31,6 +33,29 @@ const App: React.FC = () => {
     const [finalLatexCode, setFinalLatexCode] = useState('');
     const [latexCode, setLatexCode] = useState('');
     const isGenerationCancelled = useRef(false);
+
+    // Estado de Controle de Qualidade
+    const [qualityScore, setQualityScore] = useState<number | null>(null);
+    const [qualityAttempt, setQualityAttempt] = useState<number>(1);
+    const [qualityStatus, setQualityStatus] = useState<QualityStatus>('idle');
+    const [qualityStatusDetail, setQualityStatusDetail] = useState<string>('');
+    const [lastEvaluation, setLastEvaluation] = useState<EvaluationResult | null>(null);
+    const [approvedCount, setApprovedCount] = useState<number>(0);
+    const [rejectedCount, setRejectedCount] = useState<number>(0);
+    const [inProgressCount, setInProgressCount] = useState<number>(0);
+    const [qualityHistory, setQualityHistory] = useState<QualityHistoryItem[]>(() => {
+        try {
+            const stored = localStorage.getItem('quality_history_log');
+            return stored ? JSON.parse(stored) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    // Salva histórico de qualidade
+    useEffect(() => {
+        localStorage.setItem('quality_history_log', JSON.stringify(qualityHistory));
+    }, [qualityHistory]);
 
     // Estado de compilação
     const [isCompiling, setIsCompiling] = useState(false);
@@ -79,6 +104,17 @@ const App: React.FC = () => {
     const [localAIStatus, setLocalAIStatus] = useState(() => getLocalAIStatus());
     const [isLoadingLocalAI, setIsLoadingLocalAI] = useState(false);
 
+    // Auto-carrega IA local se WebGPU estiver disponível
+    useEffect(() => {
+        if (isWebLLMAvailable() && localAIStatus.status === 'not_loaded') {
+            loadLocalAI().then(() => {
+                setLocalAIStatus(getLocalAIStatus());
+            }).catch(err => {
+                console.warn('Auto-load WebLLM warning:', err);
+            });
+        }
+    }, []);
+
     // Atualiza stats do cérebro a cada 5s
     useEffect(() => {
         const interval = setInterval(() => {
@@ -88,7 +124,7 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
     }, []);
 
-    // Carrega IA local
+    // Carrega IA local manual
     const handleLoadLocalAI = async () => {
         setIsLoadingLocalAI(true);
         try {
@@ -316,7 +352,7 @@ const App: React.FC = () => {
         };
     };
 
-    // Função principal de automação
+    // Função principal de automação com CONTROLE DE QUALIDADE E AVALIAÇÃO EM TEMPO REAL
     const handleFullAutomation = async (batchSizeOverride?: number) => {
         const articlesToProcess = batchSizeOverride ?? (isContinuousMode ? 1 : numberOfArticles);
 
@@ -338,17 +374,22 @@ const App: React.FC = () => {
             if (isGenerationCancelled.current) break;
 
             const articleEntryId = crypto.randomUUID();
-            let temporaryTitle = `Artigo ${i} (Geração Falhou)`;
+            let temporaryTitle = `Artigo ${i}`;
             let currentPaper = '';
             let currentDiscipline = '';
             let randomTopic = '';
 
             try {
+                setInProgressCount(prev => prev + 1);
                 setGenerationProgress(0);
                 setAnalysisResults([]);
                 setPaperSources([]);
                 setGeneratedTitle('');
                 setFinalLatexCode('');
+                setQualityScore(null);
+                setQualityAttempt(1);
+                setQualityStatus('generating');
+                setQualityStatusDetail('Iniciando geração de conteúdo científico...');
 
                 // === ROTAÇÃO DE DISCIPLINAS ===
                 const allDisciplines = getAllDisciplines();
@@ -371,7 +412,7 @@ const App: React.FC = () => {
                 await new Promise(r => setTimeout(r, 100));
 
                 setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Gerando (Modelo: ${generationModel}, Disciplina: ${currentDiscipline})...`);
-                startProgressSimulation(0, 80, 45);
+                startProgressSimulation(0, 60, 35);
 
                 randomTopic = getRandomTopic(currentDiscipline);
                 const { paper: completePaper, title: generatedPaperTitle, sources } = await generateCompletePaper(
@@ -387,9 +428,87 @@ const App: React.FC = () => {
 
                 if (isGenerationCancelled.current) continue;
 
-                // Compilar
-                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Compilando PDF...`);
-                startProgressSimulation(80, 95, 12);
+                // ============================================================
+                // CONTROLE DE QUALIDADE (Score 0-10 & Refinamento em até 3x)
+                // ============================================================
+                setQualityStatus('evaluating');
+                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Avaliando qualidade científica (10 critérios)...`);
+                setQualityStatusDetail('Comitê de IA avaliando rigor, metodologia e originalidade...');
+                setGenerationProgress(65);
+
+                let evalResult = await evaluatePaper(currentPaper, generationModel);
+                setQualityScore(evalResult.score);
+                setLastEvaluation(evalResult);
+                let currentAttempt = 1;
+
+                // Loop de melhoria se score < 7 (até 3 tentativas)
+                while (evalResult.score < 7.0 && currentAttempt < 3 && !isGenerationCancelled.current) {
+                    currentAttempt++;
+                    setQualityAttempt(currentAttempt);
+                    setQualityStatus('improving');
+                    setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Score ${evalResult.score.toFixed(1)} < 7.0. Aprimorando paper (tentativa ${currentAttempt}/3)...`);
+                    setQualityStatusDetail(`Aplicando ${evalResult.improvements.length} melhorias identificadas pelo avaliador...`);
+                    
+                    // Melhora o paper
+                    currentPaper = await improvePaper(currentPaper, evalResult.improvements, generationModel);
+                    setFinalLatexCode(currentPaper);
+
+                    // Reavalia
+                    setQualityStatus('evaluating');
+                    setQualityStatusDetail(`Reavaliando paper aprimorado (tentativa ${currentAttempt}/3)...`);
+                    evalResult = await evaluatePaper(currentPaper, generationModel);
+                    setQualityScore(evalResult.score);
+                    setLastEvaluation(evalResult);
+                }
+
+                // Alimenta o Cérebro da Mosca (flyBrain) com a recompensa real
+                const brainReward = learnWithScore(evalResult.score, generationModel, randomTopic, currentDiscipline);
+                setBrainStats(getFlyBrainStats());
+                console.log(`[FlyBrain] Aprendizado com score ${evalResult.score}:`, brainReward);
+
+                // Registra histórico de qualidade
+                const historyEntry: QualityHistoryItem = {
+                    id: articleEntryId,
+                    topic: randomTopic,
+                    discipline: currentDiscipline,
+                    score: evalResult.score,
+                    timestamp: Date.now(),
+                    attempts: currentAttempt,
+                    status: evalResult.score >= 7.0 ? 'approved' : 'rejected'
+                };
+                setQualityHistory(prev => [...prev, historyEntry]);
+
+                // DECISÃO DE PUBLICAÇÃO: Somente publica se Score >= 7.0
+                if (evalResult.score < 7.0) {
+                    setQualityStatus('rejected');
+                    setRejectedCount(prev => prev + 1);
+                    setInProgressCount(prev => Math.max(0, prev - 1));
+                    setGenerationStatus(`❌ Artigo ${i} descartado: Score final ${evalResult.score.toFixed(1)} < 7.0 após 3 tentativas.`);
+                    
+                    setArticleEntries(prev => [...prev, {
+                        id: articleEntryId,
+                        title: temporaryTitle,
+                        date: new Date().toISOString(),
+                        status: 'compilation_failed',
+                        latexCode: currentPaper,
+                        errorMessage: `Descartado pelo Controle de Qualidade (Score ${evalResult.score.toFixed(1)}/10)`,
+                        discipline: currentDiscipline,
+                        topic: randomTopic
+                    }]);
+
+                    // Pula para o próximo paper
+                    continue;
+                }
+
+                // APROVADO! Score >= 7.0
+                setQualityStatus('approved');
+                setApprovedCount(prev => prev + 1);
+                setInProgressCount(prev => Math.max(0, prev - 1));
+                setQualityStatusDetail(`Aprovado com Score ${evalResult.score.toFixed(1)}/10! Prosseguindo para compilação e publicação.`);
+
+                // Compilar PDF
+                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Aprovado (Score ${evalResult.score.toFixed(1)})! Compilando PDF...`);
+                startProgressSimulation(75, 90, 10);
                 const compilationUpdater = (message: string) => setGenerationStatus(`Artigo ${i}/${articlesToProcess}: ${message}`);
                 const { pdfFile, finalCode } = await robustCompile(currentPaper, compilationUpdater);
                 currentPaper = finalCode;
@@ -400,7 +519,7 @@ const App: React.FC = () => {
 
                 // Upload para Zenodo
                 setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Publicando no Zenodo...`);
-                startProgressSimulation(95, 99, 10);
+                startProgressSimulation(90, 99, 8);
                 const metadataForUpload = extractMetadata(currentPaper, true);
                 const keywordsForUpload = currentPaper.match(/\\textbf\{Keywords:\}\s*([^\\]+)/)?.[1] || '';
 
@@ -428,13 +547,14 @@ const App: React.FC = () => {
                         discipline: currentDiscipline,
                         topic: randomTopic
                     }]);
-                    setGenerationStatus(`✅ Artigo ${i} publicado! DOI: ${publishedResult.doi}`);
+                    setGenerationStatus(`✅ Artigo ${i} publicado com sucesso! Score: ${evalResult.score.toFixed(1)}/10 | DOI: ${publishedResult.doi}`);
                 }
                 stopProgressSimulation();
                 setGenerationProgress(100);
 
             } catch (error: any) {
                 stopProgressSimulation();
+                setInProgressCount(prev => Math.max(0, prev - 1));
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 console.error(`Error processing article ${i}:`, error);
 
@@ -453,8 +573,8 @@ const App: React.FC = () => {
             }
 
             if (isContinuousMode && !isGenerationCancelled.current) {
-                setGenerationStatus(`✅ Ciclo concluído. Pausa de 90s antes do próximo paper (evita rate limit)...`);
-                await new Promise(r => setTimeout(r, 90000));
+                setGenerationStatus(`✅ Ciclo concluído. Preparando próximo paper...`);
+                await new Promise(r => setTimeout(r, 10000));
             }
         }
 
@@ -468,6 +588,8 @@ const App: React.FC = () => {
     const handleCancel = () => {
         isGenerationCancelled.current = true;
         setIsGenerating(false);
+        setQualityStatus('idle');
+        setInProgressCount(0);
         stopProgressSimulation();
         setGenerationStatus('⛔ Automação cancelada.');
     };
@@ -563,7 +685,7 @@ const App: React.FC = () => {
                 <div className="header-top">
                     <div>
                         <h1>🎓 Gerador de Artigos Científicos</h1>
-                        <p>IA → LaTeX → PDF → Zenodo (24/7)</p>
+                        <p>IA Local (WebGPU) + Controle de Qualidade → LaTeX → PDF → Zenodo</p>
                     </div>
                     <div className="header-buttons" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <button 
@@ -585,20 +707,25 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 <div className={`health-banner ${proxyHealth}`}>
-                    {proxyHealth === 'ok' && '✅ IA embutida (GLM-5.3) conectada — não precisa de API key'}
-                    {proxyHealth === 'fail' && '⚠️ Proxy LLM indisponível — verifique o servidor'}
+                    {proxyHealth === 'ok' && '✅ IA Local prioritária (WebGPU) + Fallback GLM-5.3 conectado'}
+                    {proxyHealth === 'fail' && '⚠️ Modo autônomo local ativo via WebGPU'}
                     {proxyHealth === 'checking' && '⏳ Verificando conexão...'}
                 </div>
 
                 {/* Painel da IA Local (WebLLM) */}
                 <div className="local-ai-panel">
-                    <h3>🤖 IA Local (WebLLM)</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <h3 style={{ margin: 0 }}>🤖 IA Local Ilimitada (WebGPU / WebLLM)</h3>
+                        <span style={{ fontSize: '11px', color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                            Sem Rate Limit • 100% no Navegador
+                        </span>
+                    </div>
                     {!isWebLLMAvailable() ? (
-                        <p className="warning">⚠️ WebGPU não disponível. Use Chrome 113+ ou Edge.</p>
+                        <p className="warning">⚠️ WebGPU não detectado neste dispositivo. O sistema utilizará fallback automático via proxy.</p>
                     ) : (
-                        <div>
+                        <div style={{ marginTop: '8px' }}>
                             <div className="ai-status">
-                                Status: <strong>{localAIStatus.status}</strong>
+                                Status: <strong>{localAIStatus.status === 'ready' ? 'Pronta para uso' : localAIStatus.status}</strong>
                                 {localAIStatus.message && <span> — {localAIStatus.message}</span>}
                                 {localAIStatus.progress > 0 && localAIStatus.progress < 100 && (
                                     <span> ({localAIStatus.progress}%)</span>
@@ -611,11 +738,13 @@ const App: React.FC = () => {
                                     className="btn btn-primary"
                                     style={{ marginTop: '8px' }}
                                 >
-                                    {isLoadingLocalAI ? '⏳ Carregando...' : '📥 Baixar IA Local (1.5GB)'}
+                                    {isLoadingLocalAI ? '⏳ Baixando modelo no navegador...' : '📥 Carregar IA Local (Llama 3.2 1B)'}
                                 </button>
                             )}
                             {localAIStatus.status === 'ready' && (
-                                <p className="success">✅ IA local pronta! Não precisa de internet.</p>
+                                <p className="success" style={{ marginTop: '6px' }}>
+                                    ✅ IA local ativa no navegador! Chamadas ilimitadas e sem travas de API.
+                                </p>
                             )}
                         </div>
                     )}
@@ -623,7 +752,7 @@ const App: React.FC = () => {
 
                 {/* Painel do Cérebro da Mosca */}
                 <div className="brain-panel">
-                    <h3>🧠 Cérebro da Mosca (Drosophila) — Aprendendo</h3>
+                    <h3>🧠 Cérebro que Aprende (Drosophila) — Recompensa por Score</h3>
                     <div className="brain-stats">
                         <div className="brain-stat">
                             <span className="brain-label">Gerações</span>
@@ -653,8 +782,22 @@ const App: React.FC = () => {
                 </div>
             </header>
 
+            {/* PAINEL DE CONTROLE DE QUALIDADE (QualityPanel) */}
+            <QualityPanel
+                currentScore={qualityScore}
+                attempt={qualityAttempt}
+                maxAttempts={3}
+                status={qualityStatus}
+                statusDetail={qualityStatusDetail}
+                lastEvaluation={lastEvaluation}
+                history={qualityHistory}
+                approvedCount={approvedCount}
+                rejectedCount={rejectedCount}
+                inProgressCount={inProgressCount}
+            />
+
             <section className="card">
-                <h2>📝 Configuração</h2>
+                <h2>📝 Configuração & Execução</h2>
                 <div className="config-grid">
                     <div>
                         <label>Idioma:</label>
@@ -677,7 +820,7 @@ const App: React.FC = () => {
                         </select>
                     </div>
                     <div>
-                        <label>Quantidade:</label>
+                        <label>Quantidade de Papers:</label>
                         <input type="number" min={1} max={100} value={numberOfArticles} onChange={e => setNumberOfArticles(parseInt(e.target.value) || 1)} className="number-input" disabled={isContinuousMode} />
                     </div>
                 </div>
@@ -685,28 +828,28 @@ const App: React.FC = () => {
                 <div className="toggles">
                     <label className="toggle">
                         <input type="checkbox" checked={isContinuousMode} onChange={e => setIsContinuousMode(e.target.checked)} disabled={isGenerating} />
-                        <span>🔄 Modo Contínuo (loop 24/7)</span>
+                        <span>🔄 Modo Contínuo (loop 24/7 autônomo)</span>
                     </label>
                     <label className="toggle">
                         <input type="checkbox" checked={isSchedulerEnabled} onChange={e => setIsSchedulerEnabled(e.target.checked)} disabled={isGenerating} />
-                        <span>⏰ Agendador (1 paper/min)</span>
+                        <span>⏰ Agendador Cron (1 paper a cada intervalo)</span>
                     </label>
                 </div>
 
                 <div className="action-buttons">
                     {!isGenerating ? (
                         <button onClick={() => handleFullAutomation()} className="btn btn-primary">
-                            🚀 {isContinuousMode ? 'Iniciar Automação Contínua' : `Gerar ${numberOfArticles} Artigo(s)`}
+                            🚀 {isContinuousMode ? 'Iniciar Automação Contínua com Qualidade' : `Gerar e Qualificar ${numberOfArticles} Artigo(s)`}
                         </button>
                     ) : (
-                        <button onClick={handleCancel} className="btn btn-danger">⛔ Cancelar</button>
+                        <button onClick={handleCancel} className="btn btn-danger">⛔ Cancelar Execução</button>
                     )}
                 </div>
             </section>
 
             {(isGenerating || generationProgress > 0) && (
                 <section className="card">
-                    <h2>📊 Progresso</h2>
+                    <h2>📊 Progresso do Pipeline</h2>
                     <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${generationProgress}%` }}>{generationProgress}%</div>
                     </div>
@@ -719,7 +862,7 @@ const App: React.FC = () => {
 
             {finalLatexCode && (
                 <section className="card">
-                    <h2>📝 LaTeX Gerado</h2>
+                    <h2>📝 LaTeX do Artigo Científico</h2>
                     <textarea value={finalLatexCode} onChange={e => setLatexCode(e.target.value)} className="latex-editor" rows={20} />
                     <div className="action-buttons">
                         <button onClick={handleCompile} disabled={isCompiling} className="btn btn-secondary">📋 Compilar PDF</button>
@@ -733,7 +876,7 @@ const App: React.FC = () => {
 
             {publishedPapers.length > 0 && (
                 <section className="card">
-                    <h2>📚 Artigos Publicados ({publishedPapers.length})</h2>
+                    <h2>📚 Artigos Publicados no Zenodo ({publishedPapers.length})</h2>
                     <div className="papers-list">
                         {publishedPapers.map(p => (
                             <div key={p.id} className="paper-item">
@@ -750,3 +893,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

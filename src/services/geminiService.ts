@@ -6,22 +6,40 @@ import { ARTICLE_TEMPLATE } from './articleTemplate';
 import { ANALYSIS_TOPICS, SEMANTIC_SCHOLAR_API_BASE_URL } from '../constants';
 import { getEnrichedPrompt, registerPaper } from './learningBrain';
 import { think as flyThink, learnWithReward as flyLearnWithReward, suggestHighImpactTopic, getBrainStats } from './flyBrain';
+import { callLocalLLM, isWebLLMAvailable } from './webLLMService';
 import type { Language, PaperSource, PersonalData, StyleGuide, TopicScore, GeneratePaperResult } from '../types';
 
-interface ChatMessage {
+export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
 }
 
 // ============================================================================
-// CHAMADA LLM via /llm-proxy (Vite plugin com z-ai-web-dev-sdk embutido)
+// CHAMADA LLM (IA LOCAL WebGPU PRIMEIRO -> Fallback Z.ai / Gemini / Groq)
 // ============================================================================
 
-async function callLLM(
+export async function callLLM(
     model: string,
     messages: ChatMessage[],
     options: { temperature?: number; maxTokens?: number; responseFormat?: 'text' | 'json' } = {}
 ): Promise<string> {
+    // 1. Tenta IA Local PRIMEIRO (WebGPU ilimitada sem limite de chamadas)
+    if (isWebLLMAvailable()) {
+        try {
+            console.log('[LLM] Executando com IA Local no navegador (WebGPU)...');
+            const localContent = await callLocalLLM(messages, {
+                temperature: options.temperature,
+                maxTokens: options.maxTokens
+            });
+            if (localContent && localContent.trim().length > 0) {
+                return localContent;
+            }
+        } catch (localErr) {
+            console.warn('[LLM] IA Local falhou ou ocupada, acionando fallback remoto:', localErr);
+        }
+    }
+
+    // 2. Fallback: Proxy remoto (Z.ai / Gemini / Groq)
     const response = await fetch('/llm-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

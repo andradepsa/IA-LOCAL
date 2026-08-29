@@ -410,6 +410,73 @@ export function think(topic: string, discipline: string): {
     };
 }
 
+export function learnWithScore(
+    score: number,
+    modelUsed: string,
+    topic: string,
+    discipline: string
+): {
+    dopamine: number;
+    serotonin: number;
+    age: number;
+    reward: number;
+} {
+    const brain = loadBrain();
+    const lr = brain.learningRate;
+    const reward = Math.min(1, Math.max(0, score / 10));
+
+    // Ajuste de neurotransmissores baseado no score
+    let deltaDopamine = 0;
+    let deltaSerotonin = 0;
+
+    if (score >= 9.0) {
+        // Excelente - reforça modelo fortemente
+        deltaDopamine = 0.10;
+        deltaSerotonin = 0.06;
+    } else if (score >= 7.0) {
+        // Bom - reforça modelo
+        deltaDopamine = 0.05;
+        deltaSerotonin = 0.03;
+    } else if (score >= 5.0) {
+        // Médio - reduz modelo
+        deltaDopamine = -0.02;
+        deltaSerotonin = -0.01;
+    } else {
+        // Ruim - reduz modelo fortemente
+        deltaDopamine = -0.05;
+        deltaSerotonin = -0.03;
+    }
+
+    brain.dopamine = Math.min(1, Math.max(0, brain.dopamine + deltaDopamine));
+    brain.serotonin = Math.min(1, Math.max(0, brain.serotonin + deltaSerotonin));
+
+    // Atualiza peso do modelo no corpo central
+    const weightKey = modelUsed.replace(/[-.]/g, '_').toLowerCase();
+    const currentWeight = brain.regions.central_complex.weights[weightKey] || 0.5;
+    
+    if (score >= 7.0) {
+        brain.regions.central_complex.weights[weightKey] = Math.min(1, currentWeight + lr * reward);
+        brain.regions.mushroom_body.weights.success_rate = Math.min(1, (brain.regions.mushroom_body.weights.success_rate || 0.5) + lr * 0.2);
+    } else {
+        brain.regions.central_complex.weights[weightKey] = Math.max(0.05, currentWeight - lr * 0.3);
+    }
+
+    // Ativação da antena e integração
+    stimulateAntenna(brain, topic, discipline);
+    brain.age++;
+    brain.generations++;
+    brain.learningRate = Math.max(0.05, 0.3 - brain.age * 0.001);
+
+    saveBrain(brain);
+
+    return {
+        dopamine: brain.dopamine,
+        serotonin: brain.serotonin,
+        age: brain.age,
+        reward
+    };
+}
+
 export function learn(success: boolean, modelUsed: string, latexCode: string): {
     quality: number;
     isValid: boolean;

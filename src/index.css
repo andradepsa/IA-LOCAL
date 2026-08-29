@@ -429,9 +429,264 @@ body {
 
 .source-meta { display: block; color: var(--text-light); font-size: 11px; }
 
+/* ==========================================================================
+   PAINEL DE QUALIFICAÇÃO (QualityPanel)
+   ========================================================================== */
+.quality-panel {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.quality-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 16px;
+}
+
+.quality-stats-pill-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.quality-pill {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+.quality-pill.approved {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.quality-pill.rejected {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.quality-pill.progress {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.quality-panel-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+    .quality-panel-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.quality-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.quality-card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+
+.score-display-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.score-display {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    font-weight: 800;
+}
+
+.score-display.score-empty {
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+
+.score-number {
+    font-size: 26px;
+    line-height: 1;
+}
+
+.score-max {
+    font-size: 13px;
+    opacity: 0.7;
+    margin-left: 2px;
+}
+
+.attempt-badge {
+    font-size: 11px;
+    background: #e2e8f0;
+    color: #334155;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.score-classification {
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.status-pulse-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulseDot 1.5s infinite;
+}
+
+@keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.status-indicator.status-generating {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.status-indicator.status-evaluating {
+    background: #fdf4ff;
+    color: #a21caf;
+}
+
+.status-indicator.status-improving {
+    background: #fffbeb;
+    color: #d97706;
+}
+
+.status-indicator.status-approved {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.status-indicator.status-rejected {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.status-indicator.status-idle {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.status-detail-text {
+    font-size: 12px;
+    color: #475569;
+    margin-top: 6px;
+}
+
+.evaluation-mini-feedback {
+    font-size: 11px;
+    color: #475569;
+    margin-top: 6px;
+    background: #ffffff;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+
+.metric-big-number {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.metric-subtext {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.quality-chart-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.score-chart-wrapper {
+    width: 100%;
+    height: 100px;
+}
+
+.score-chart-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.chart-empty-state {
+    padding: 24px;
+    text-align: center;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.improvements-box {
+    margin-top: 12px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .config-grid { grid-template-columns: 1fr; }
     .header-top { flex-direction: column; gap: 12px; align-items: flex-start; }
     .toggles { flex-direction: column; gap: 12px; }
 }
+
