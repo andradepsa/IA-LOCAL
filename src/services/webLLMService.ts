@@ -21,10 +21,10 @@ let currentModel: string | null = null;
 let isLoading: boolean = false;
 let loadProgress: number = 0;
 
-// Modelos suportados (Llama 3.2 1B, Qwen 2.5 0.5B, SmolLM2 360M)
-export const DEFAULT_MODEL = 'SmolLM2-360M-Instruct-q4f16_1-MLC';
-export const FALLBACK_MODEL = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
-export const LARGE_MODEL = 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
+// Modelos oficiais com prebuilt weights no WebLLM (CDN global sem erro CORS/404)
+export const DEFAULT_MODEL = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
+export const FALLBACK_MODEL = 'TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC';
+export const LARGE_MODEL = 'Llama-3.2-1B-Instruct-q4f16_1-MLC';
 
 export type ModelStatus = 'not_loaded' | 'loading' | 'ready' | 'error';
 

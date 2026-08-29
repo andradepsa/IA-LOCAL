@@ -101,7 +101,7 @@ const App: React.FC = () => {
     // Estado do cérebro da mosca
     const [brainStats, setBrainStats] = useState(() => getFlyBrainStats());
     // Estado da IA local (WebLLM)
-    const [selectedLocalModel, setSelectedLocalModel] = useState<string>('SmolLM2-360M-Instruct-q4f16_1-MLC');
+    const [selectedLocalModel, setSelectedLocalModel] = useState<string>('Qwen2.5-0.5B-Instruct-q4f16_1-MLC');
     const [localAIStatus, setLocalAIStatus] = useState(() => getLocalAIStatus());
     const [isLoadingLocalAI, setIsLoadingLocalAI] = useState(false);
 
@@ -726,9 +726,9 @@ const App: React.FC = () => {
                                     className="select-input"
                                     style={{ maxWidth: '320px', padding: '4px 8px', fontSize: '13px' }}
                                 >
-                                    <option value="SmolLM2-360M-Instruct-q4f16_1-MLC">SmolLM2 360M (Ultraleve - 300MB - Download Rápido)</option>
-                                    <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 2.5 0.5B (Leve - 500MB)</option>
-                                    <option value="Llama-3.2-1B-Instruct-q4f32_1-MLC">Llama 3.2 1B (Completo - 1.5GB)</option>
+                                    <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 2.5 0.5B (Rápido e Estável - ~400MB)</option>
+                                    <option value="TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC">TinyLlama 1.1B (Compatibilidade Universal - ~650MB)</option>
+                                    <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B (Alta Qualidade - ~1.2GB)</option>
                                 </select>
 
                                 {localAIStatus.status !== 'ready' && (
