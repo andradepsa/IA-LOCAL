@@ -22,8 +22,9 @@ let isLoading: boolean = false;
 let loadProgress: number = 0;
 
 // Modelos suportados (Llama 3.2 1B, Qwen 2.5 0.5B, SmolLM2 360M)
-export const DEFAULT_MODEL = 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
+export const DEFAULT_MODEL = 'SmolLM2-360M-Instruct-q4f16_1-MLC';
 export const FALLBACK_MODEL = 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
+export const LARGE_MODEL = 'Llama-3.2-1B-Instruct-q4f32_1-MLC';
 
 export type ModelStatus = 'not_loaded' | 'loading' | 'ready' | 'error';
 
@@ -38,7 +39,7 @@ export function getLocalAIStatus() {
     return getModelStatus();
 }
 
-// Carrega o modelo (1.5GB, baixa 1x e cacheia no IndexedDB)
+// Carrega o modelo com fallback robusto
 export async function loadModel(modelId: string = DEFAULT_MODEL): Promise<boolean> {
     if (engine && currentModel === modelId) {
         status = 'ready';
@@ -50,11 +51,11 @@ export async function loadModel(modelId: string = DEFAULT_MODEL): Promise<boolea
 
     isLoading = true;
     status = 'loading';
-    statusMessage = `Baixando modelo de IA local ${modelId} (cache no navegador)...`;
+    statusMessage = `Iniciando carregamento do modelo (${modelId})...`;
 
     try {
         if (!navigator.gpu) {
-            throw new Error('WebGPU não está disponível ou habilitado neste navegador.');
+            throw new Error('WebGPU não está ativado no navegador. Ative em chrome://flags se disponível.');
         }
 
         engine = await webllm.CreateMLCEngine(
@@ -62,7 +63,7 @@ export async function loadModel(modelId: string = DEFAULT_MODEL): Promise<boolea
             {
                 initProgressCallback: (report: any) => {
                     loadProgress = Math.round((report.progress || 0) * 100);
-                    statusMessage = `Carregando modelo: ${report.text || ''} (${loadProgress}%)`;
+                    statusMessage = `${report.text || 'Baixando pesos do modelo'} (${loadProgress}%)`;
                     console.log(`[WebLLM] ${statusMessage}`);
                 }
             }
@@ -70,22 +71,27 @@ export async function loadModel(modelId: string = DEFAULT_MODEL): Promise<boolea
 
         currentModel = modelId;
         status = 'ready';
-        statusMessage = `Modelo ${modelId} pronto para uso ilimitado!`;
+        statusMessage = `Modelo ${modelId} carregado e pronto para uso ilimitado!`;
         loadProgress = 100;
         isLoading = false;
         console.log(`[WebLLM] ✅ Modelo local ${modelId} carregado com sucesso!`);
         return true;
     } catch (e: any) {
         console.error('[WebLLM] Erro ao carregar modelo:', e);
-        status = 'error';
-        statusMessage = e?.message || 'Erro ao carregar modelo WebGPU';
-        isLoading = false;
-
-        // Tenta fallback com modelo mais leve se o primário falhar
+        
+        // Se falhou no SmolLM ou Llama, tenta o ultraleve Qwen2.5 0.5B
         if (modelId !== FALLBACK_MODEL) {
-            console.log('[WebLLM] Tentando modelo alternativo mais leve...');
+            console.log(`[WebLLM] Tentando fallback para ${FALLBACK_MODEL}...`);
+            isLoading = false;
             return loadModel(FALLBACK_MODEL);
         }
+
+        status = 'error';
+        const rawErr = e?.message || String(e);
+        statusMessage = rawErr.includes('Failed to fetch') 
+            ? 'Falha ao baixar pesos do modelo (verifique a conexão ou clique no botão para tentar novamente).'
+            : rawErr;
+        isLoading = false;
         return false;
     }
 }

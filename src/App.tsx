@@ -101,37 +101,28 @@ const App: React.FC = () => {
     // Estado do cérebro da mosca
     const [brainStats, setBrainStats] = useState(() => getFlyBrainStats());
     // Estado da IA local (WebLLM)
+    const [selectedLocalModel, setSelectedLocalModel] = useState<string>('SmolLM2-360M-Instruct-q4f16_1-MLC');
     const [localAIStatus, setLocalAIStatus] = useState(() => getLocalAIStatus());
     const [isLoadingLocalAI, setIsLoadingLocalAI] = useState(false);
-
-    // Auto-carrega IA local se WebGPU estiver disponível
-    useEffect(() => {
-        if (isWebLLMAvailable() && localAIStatus.status === 'not_loaded') {
-            loadLocalAI().then(() => {
-                setLocalAIStatus(getLocalAIStatus());
-            }).catch(err => {
-                console.warn('Auto-load WebLLM warning:', err);
-            });
-        }
-    }, []);
 
     // Atualiza stats do cérebro a cada 5s
     useEffect(() => {
         const interval = setInterval(() => {
             setBrainStats(getFlyBrainStats());
             setLocalAIStatus(getLocalAIStatus());
-        }, 5000);
+        }, 3000);
         return () => clearInterval(interval);
     }, []);
 
     // Carrega IA local manual
-    const handleLoadLocalAI = async () => {
+    const handleLoadLocalAI = async (modelToLoad = selectedLocalModel) => {
         setIsLoadingLocalAI(true);
         try {
-            await loadLocalAI();
+            await loadLocalAI(modelToLoad);
             setLocalAIStatus(getLocalAIStatus());
         } catch (e: any) {
             console.error('Erro ao carregar IA local:', e);
+            setLocalAIStatus(getLocalAIStatus());
         }
         setIsLoadingLocalAI(false);
     };
@@ -712,38 +703,59 @@ const App: React.FC = () => {
                     {proxyHealth === 'checking' && '⏳ Verificando conexão...'}
                 </div>
 
-                {/* Painel da IA Local (WebLLM) */}
+                    {/* Painel da IA Local (WebLLM) */}
                 <div className="local-ai-panel">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <h3 style={{ margin: 0 }}>🤖 IA Local Ilimitada (WebGPU / WebLLM)</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <h3 style={{ margin: 0 }}>🤖 IA Local no Navegador (WebGPU / WebLLM)</h3>
                         <span style={{ fontSize: '11px', color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-                            Sem Rate Limit • 100% no Navegador
+                            Sem Rate Limit • 100% no Navegador • Grátis
                         </span>
                     </div>
                     {!isWebLLMAvailable() ? (
-                        <p className="warning">⚠️ WebGPU não detectado neste dispositivo. O sistema utilizará fallback automático via proxy.</p>
+                        <p className="warning" style={{ marginTop: '8px' }}>
+                            ⚠️ WebGPU não ativo neste navegador. O sistema utilizará os modelos em nuvem automaticamente.
+                        </p>
                     ) : (
-                        <div style={{ marginTop: '8px' }}>
-                            <div className="ai-status">
-                                Status: <strong>{localAIStatus.status === 'ready' ? 'Pronta para uso' : localAIStatus.status}</strong>
-                                {localAIStatus.message && <span> — {localAIStatus.message}</span>}
-                                {localAIStatus.progress > 0 && localAIStatus.progress < 100 && (
-                                    <span> ({localAIStatus.progress}%)</span>
+                        <div style={{ marginTop: '10px' }}>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155' }}>Modelo Local:</label>
+                                <select 
+                                    value={selectedLocalModel} 
+                                    onChange={e => setSelectedLocalModel(e.target.value)}
+                                    disabled={isLoadingLocalAI || localAIStatus.status === 'loading'}
+                                    className="select-input"
+                                    style={{ maxWidth: '320px', padding: '4px 8px', fontSize: '13px' }}
+                                >
+                                    <option value="SmolLM2-360M-Instruct-q4f16_1-MLC">SmolLM2 360M (Ultraleve - 300MB - Download Rápido)</option>
+                                    <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 2.5 0.5B (Leve - 500MB)</option>
+                                    <option value="Llama-3.2-1B-Instruct-q4f32_1-MLC">Llama 3.2 1B (Completo - 1.5GB)</option>
+                                </select>
+
+                                {localAIStatus.status !== 'ready' && (
+                                    <button
+                                        onClick={() => handleLoadLocalAI(selectedLocalModel)}
+                                        disabled={isLoadingLocalAI || localAIStatus.status === 'loading'}
+                                        className="btn btn-primary"
+                                        style={{ padding: '6px 14px', fontSize: '13px' }}
+                                    >
+                                        {isLoadingLocalAI || localAIStatus.status === 'loading' ? '⏳ Baixando...' : '📥 Baixar & Ativar IA Local'}
+                                    </button>
                                 )}
                             </div>
-                            {localAIStatus.status !== 'ready' && (
-                                <button
-                                    onClick={handleLoadLocalAI}
-                                    disabled={isLoadingLocalAI}
-                                    className="btn btn-primary"
-                                    style={{ marginTop: '8px' }}
-                                >
-                                    {isLoadingLocalAI ? '⏳ Baixando modelo no navegador...' : '📥 Carregar IA Local (Llama 3.2 1B)'}
-                                </button>
-                            )}
+
+                            <div className="ai-status" style={{ fontSize: '12px', color: '#475569', background: '#f8fafc', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                Status: <strong>{localAIStatus.status === 'ready' ? '✅ Ativa e Pronta' : localAIStatus.status === 'error' ? '⚠️ Em espera / Standby' : localAIStatus.status === 'loading' ? '⏳ Baixando...' : '⚪ Não carregada (Opcional)'}</strong>
+                                {localAIStatus.message && <span> — {localAIStatus.message}</span>}
+                                {localAIStatus.progress > 0 && localAIStatus.progress < 100 && (
+                                    <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '3px', marginTop: '6px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${localAIStatus.progress}%`, height: '100%', background: '#3b82f6', transition: 'width 0.3s' }}></div>
+                                    </div>
+                                )}
+                            </div>
+
                             {localAIStatus.status === 'ready' && (
-                                <p className="success" style={{ marginTop: '6px' }}>
-                                    ✅ IA local ativa no navegador! Chamadas ilimitadas e sem travas de API.
+                                <p className="success" style={{ marginTop: '6px', fontSize: '12px' }}>
+                                    ✅ IA local ativa no navegador! Todas as chamadas de geração e avaliação serão executadas diretamente na sua GPU sem consumir limites de API.
                                 </p>
                             )}
                         </div>
