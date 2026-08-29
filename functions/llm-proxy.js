@@ -48,17 +48,89 @@ export async function onRequestPost(context) {
             });
         }
 
-        // Prioridade 1: env.ZAI_API_KEY (configurada no Cloudflare Pages dashboard)
-        // Prioridade 2: header X-ZAI-API-Key (enviado pelo frontend com a key do usuário)
-        const apiKey = env.ZAI_API_KEY || request.headers.get('X-ZAI-API-Key') || '';
+        // Prioridade 1: env.ZAI_API_KEY / env.GEMINI_API_KEY / env.GROQ_API_KEY
+        // Prioridade 2: headers do frontend (X-ZAI-API-Key, X-Gemini-API-Key, X-Groq-API-Key)
+        const zaiApiKey = env.ZAI_API_KEY || request.headers.get('X-ZAI-API-Key') || '';
+        const geminiApiKey = env.GEMINI_API_KEY || request.headers.get('X-Gemini-API-Key') || '';
+        const groqApiKey = env.GROQ_API_KEY || request.headers.get('X-Groq-API-Key') || '';
+
+        // Se o modelo ou chave for Gemini:
+        if (geminiApiKey || (model && model.toLowerCase().includes('gemini'))) {
+            try {
+                const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+                const geminiRes = await fetch(geminiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${geminiApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gemini-2.5-flash',
+                        messages,
+                        temperature: typeof temperature === 'number' ? temperature : 0.7,
+                        max_tokens: typeof maxTokens === 'number' ? maxTokens : 8192,
+                        response_format: json ? { type: 'json_object' } : undefined
+                    })
+                });
+
+                if (geminiRes.ok) {
+                    const geminiData = await geminiRes.json();
+                    const content = geminiData?.choices?.[0]?.message?.content || '';
+                    if (content) {
+                        return new Response(JSON.stringify({ content, model: 'gemini-2.5-flash' }), {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                        });
+                    }
+                }
+            } catch (gErr) {
+                console.warn('Gemini attempt failed in Cloudflare function:', gErr);
+            }
+        }
+
+        // Se o modelo ou chave for Groq:
+        if (groqApiKey || (model && model.toLowerCase().includes('llama'))) {
+            try {
+                const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+                const groqRes = await fetch(groqUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${groqApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'llama-3.3-70b-versatile',
+                        messages,
+                        temperature: typeof temperature === 'number' ? temperature : 0.7,
+                        max_tokens: typeof maxTokens === 'number' ? maxTokens : 8192,
+                        response_format: json ? { type: 'json_object' } : undefined
+                    })
+                });
+
+                if (groqRes.ok) {
+                    const groqData = await groqRes.json();
+                    const content = groqData?.choices?.[0]?.message?.content || '';
+                    if (content) {
+                        return new Response(JSON.stringify({ content, model: 'llama-3.3-70b-versatile' }), {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+                        });
+                    }
+                }
+            } catch (grErr) {
+                console.warn('Groq attempt failed in Cloudflare function:', grErr);
+            }
+        }
+
+        const apiKey = zaiApiKey;
         const baseUrl = env.ZAI_BASE_URL || DEFAULT_BASE_URL;
 
         if (!apiKey) {
             return new Response(JSON.stringify({
-                error: 'Nenhuma API key configurada. Defina ZAI_API_KEY nas variáveis de ambiente do Cloudflare Pages, ou cole sua key no modal ⚙️ do app.'
+                error: 'Nenhuma API key de IA configurada. Cole sua Z.ai, Gemini ou Groq API Key no menu de configurações ⚙️ do app.'
             }), {
                 status: 401,
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
             });
         }
 
@@ -149,7 +221,7 @@ export async function onRequestOptions() {
         headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, X-ZAI-API-Key'
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-ZAI-API-Key, X-Gemini-API-Key, X-Groq-API-Key'
         }
     });
 }
