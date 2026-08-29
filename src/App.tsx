@@ -354,7 +354,7 @@ const App: React.FC = () => {
 
     // Função principal de automação com CONTROLE DE QUALIDADE E AVALIAÇÃO EM TEMPO REAL
     const handleFullAutomation = async (batchSizeOverride?: number) => {
-        const articlesToProcess = batchSizeOverride ?? (isContinuousMode ? 1 : numberOfArticles);
+        const targetPublishedCount = batchSizeOverride ?? (isContinuousMode ? Infinity : numberOfArticles);
 
         const storedToken = zenodoToken || localStorage.getItem('zenodo_api_key') || '';
         if (!storedToken) {
@@ -370,11 +370,14 @@ const App: React.FC = () => {
         setAnalysisResults([]);
         setPaperSources([]);
 
-        for (let i = 1; i <= articlesToProcess; i++) {
-            if (isGenerationCancelled.current) break;
+        let articleAttempt = 0;
+        let successfulPublishedCount = 0;
 
+        while (!isGenerationCancelled.current && successfulPublishedCount < targetPublishedCount) {
+            articleAttempt++;
+            const currentArticleNumber = articleAttempt;
             const articleEntryId = crypto.randomUUID();
-            let temporaryTitle = `Artigo ${i}`;
+            let temporaryTitle = `Artigo ${currentArticleNumber}`;
             let currentPaper = '';
             let currentDiscipline = '';
             let randomTopic = '';
@@ -393,7 +396,7 @@ const App: React.FC = () => {
 
                 // === ROTAÇÃO DE DISCIPLINAS ===
                 const allDisciplines = getAllDisciplines();
-                const disciplineIndex = (i - 1) % allDisciplines.length;
+                const disciplineIndex = (currentArticleNumber - 1) % allDisciplines.length;
                 currentDiscipline = allDisciplines[disciplineIndex];
                 setSelectedDiscipline(currentDiscipline);
 
@@ -409,9 +412,9 @@ const App: React.FC = () => {
                     { name: a2.name, affiliation: a2.affiliation, orcid: a2.orcid }
                 ];
                 setAuthors(currentAuthors);
-                await new Promise(r => setTimeout(r, 100));
 
-                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Gerando (Modelo: ${generationModel}, Disciplina: ${currentDiscipline})...`);
+                const countLabel = isContinuousMode ? `Artigo #${currentArticleNumber}` : `Artigo #${currentArticleNumber} (${successfulPublishedCount}/${targetPublishedCount} publicados)`;
+                setGenerationStatus(`${countLabel}: Gerando (Modelo: ${generationModel}, Disciplina: ${currentDiscipline})...`);
                 startProgressSimulation(0, 60, 35);
 
                 randomTopic = getRandomTopic(currentDiscipline);
@@ -426,13 +429,13 @@ const App: React.FC = () => {
                 setFinalLatexCode(completePaper);
                 stopProgressSimulation();
 
-                if (isGenerationCancelled.current) continue;
+                if (isGenerationCancelled.current) break;
 
                 // ============================================================
                 // CONTROLE DE QUALIDADE (Score 0-10 & Refinamento em até 3x)
                 // ============================================================
                 setQualityStatus('evaluating');
-                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Avaliando qualidade científica (10 critérios)...`);
+                setGenerationStatus(`${countLabel}: Avaliando qualidade científica (10 critérios)...`);
                 setQualityStatusDetail('Comitê de IA avaliando rigor, metodologia e originalidade...');
                 setGenerationProgress(65);
 
@@ -446,7 +449,7 @@ const App: React.FC = () => {
                     currentAttempt++;
                     setQualityAttempt(currentAttempt);
                     setQualityStatus('improving');
-                    setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Score ${evalResult.score.toFixed(1)} < 7.0. Aprimorando paper (tentativa ${currentAttempt}/3)...`);
+                    setGenerationStatus(`${countLabel}: Score ${evalResult.score.toFixed(1)} < 7.0. Aprimorando paper (tentativa ${currentAttempt}/3)...`);
                     setQualityStatusDetail(`Aplicando ${evalResult.improvements.length} melhorias identificadas pelo avaliador...`);
                     
                     // Melhora o paper
@@ -478,12 +481,12 @@ const App: React.FC = () => {
                 };
                 setQualityHistory(prev => [...prev, historyEntry]);
 
-                // DECISÃO DE PUBLICAÇÃO: Somente publica se Score >= 7.0
+                // DECISÃO DE PUBLICAÇÃO: Se Score < 7.0, descarta e INICIA O PRÓXIMO IMEDIATAMENTE
                 if (evalResult.score < 7.0) {
                     setQualityStatus('rejected');
                     setRejectedCount(prev => prev + 1);
                     setInProgressCount(prev => Math.max(0, prev - 1));
-                    setGenerationStatus(`❌ Artigo ${i} descartado: Score final ${evalResult.score.toFixed(1)} < 7.0 após 3 tentativas.`);
+                    setGenerationStatus(`❌ Artigo #${currentArticleNumber} descartado (Score ${evalResult.score.toFixed(1)} < 7.0). Iniciando próximo artigo imediatamente...`);
                     
                     setArticleEntries(prev => [...prev, {
                         id: articleEntryId,
@@ -496,7 +499,7 @@ const App: React.FC = () => {
                         topic: randomTopic
                     }]);
 
-                    // Pula para o próximo paper
+                    // Pula imediatamente para o próximo paper sem intervalo
                     continue;
                 }
 
@@ -504,39 +507,40 @@ const App: React.FC = () => {
                 setQualityStatus('approved');
                 setApprovedCount(prev => prev + 1);
                 setInProgressCount(prev => Math.max(0, prev - 1));
-                setQualityStatusDetail(`Aprovado com Score ${evalResult.score.toFixed(1)}/10! Prosseguindo para compilação e publicação.`);
+                setQualityStatusDetail(`Aprovado com Score ${evalResult.score.toFixed(1)}/10! Compilando e publicando...`);
 
                 // Compilar PDF
-                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Aprovado (Score ${evalResult.score.toFixed(1)})! Compilando PDF...`);
+                setGenerationStatus(`${countLabel}: Aprovado (Score ${evalResult.score.toFixed(1)})! Compilando PDF...`);
                 startProgressSimulation(75, 90, 10);
-                const compilationUpdater = (message: string) => setGenerationStatus(`Artigo ${i}/${articlesToProcess}: ${message}`);
+                const compilationUpdater = (message: string) => setGenerationStatus(`${countLabel}: ${message}`);
                 const { pdfFile, finalCode } = await robustCompile(currentPaper, compilationUpdater);
                 currentPaper = finalCode;
                 setFinalLatexCode(finalCode);
                 stopProgressSimulation();
 
-                if (isGenerationCancelled.current) continue;
+                if (isGenerationCancelled.current) break;
 
                 // Upload para Zenodo
-                setGenerationStatus(`Artigo ${i}/${articlesToProcess}: Publicando no Zenodo...`);
+                setGenerationStatus(`${countLabel}: Publicando no Zenodo...`);
                 startProgressSimulation(90, 99, 8);
                 const metadataForUpload = extractMetadata(currentPaper, true);
                 const keywordsForUpload = currentPaper.match(/\\textbf\{Keywords:\}\s*([^\\]+)/)?.[1] || '';
 
                 let publishedResult: { doi: string; link: string } | null = null;
-                for (let attempt = 1; attempt <= 5; attempt++) {
+                for (let attempt = 1; attempt <= 3; attempt++) {
                     if (isGenerationCancelled.current) break;
                     try {
                         const result = await uploadToZenodo(pdfFile, { ...metadataForUpload, keywords: keywordsForUpload }, storedToken);
                         publishedResult = result;
                         break;
                     } catch (error: any) {
-                        if (attempt === 5) throw error;
-                        await new Promise(r => setTimeout(r, 3000 * attempt));
+                        if (attempt === 3) throw error;
+                        await new Promise(r => setTimeout(r, 1000));
                     }
                 }
 
                 if (publishedResult) {
+                    successfulPublishedCount++;
                     setArticleEntries(prev => [...prev, {
                         id: articleEntryId,
                         title: metadataForUpload.title,
@@ -547,7 +551,7 @@ const App: React.FC = () => {
                         discipline: currentDiscipline,
                         topic: randomTopic
                     }]);
-                    setGenerationStatus(`✅ Artigo ${i} publicado com sucesso! Score: ${evalResult.score.toFixed(1)}/10 | DOI: ${publishedResult.doi}`);
+                    setGenerationStatus(`✅ Artigo #${currentArticleNumber} publicado com sucesso! Score: ${evalResult.score.toFixed(1)}/10 | DOI: ${publishedResult.doi} — Iniciando próximo imediatamente...`);
                 }
                 stopProgressSimulation();
                 setGenerationProgress(100);
@@ -556,7 +560,7 @@ const App: React.FC = () => {
                 stopProgressSimulation();
                 setInProgressCount(prev => Math.max(0, prev - 1));
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error(`Error processing article ${i}:`, error);
+                console.error(`Error processing article #${currentArticleNumber}:`, error);
 
                 const status = errorMessage.includes('compilação') ? 'compilation_failed' : 'upload_failed';
                 setArticleEntries(prev => [...prev, {
@@ -569,19 +573,15 @@ const App: React.FC = () => {
                     discipline: currentDiscipline,
                     topic: randomTopic
                 }]);
-                setGenerationStatus(`❌ Artigo ${i} falhou: ${errorMessage.slice(0, 100)}`);
-            }
-
-            if (isContinuousMode && !isGenerationCancelled.current) {
-                setGenerationStatus(`✅ Ciclo concluído. Preparando próximo paper...`);
-                await new Promise(r => setTimeout(r, 10000));
+                setGenerationStatus(`❌ Erro no Artigo #${currentArticleNumber}: ${errorMessage.slice(0, 80)}. Iniciando próximo artigo imediatamente sem intervalo...`);
+                // Continua imediatamente para o próximo
             }
         }
 
         setIsGenerating(false);
-        if (!isContinuousMode) {
+        if (!isContinuousMode && !isGenerationCancelled.current) {
             setGenerationProgress(100);
-            setGenerationStatus(`✅ Processo concluído!`);
+            setGenerationStatus(`✅ Processo concluído! Total de ${successfulPublishedCount} artigo(s) qualificado(s) e publicado(s).`);
         }
     };
 
