@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "IA Local",
+  "description": "Interface e testador de conexão para o serviço IA Local e Cloudflare Worker",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
